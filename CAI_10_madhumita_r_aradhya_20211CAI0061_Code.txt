@@ -1,0 +1,244 @@
+SQL
+
+BEGIN
+
+  -- Step 1: Connect to the CRM Database
+  CONNECT TO CRM_DATABASE USING Oracle_SQL;
+
+
+  -- Step 2: Extract Customer Records
+  EXECUTE QUERY:
+    SELECT customer_id, name, email, phone, created_date, status
+    FROM customer_table
+    WHERE status IS NOT NULL;
+
+
+  -- Step 3: Identify and Count Duplicates
+  EXECUTE QUERY:
+    SELECT email, COUNT(*) AS count
+    FROM customer_table
+    GROUP BY email
+    HAVING COUNT(*) > 1;
+
+
+  -- Step 4: Check for Data Completeness
+  EXECUTE QUERY:
+    SELECT *
+    FROM customer_table
+    WHERE email IS NULL OR phone IS NULL;
+
+
+  -- Step 5: Aggregate Customer Activity
+  EXECUTE QUERY:
+    SELECT customer_id, COUNT(activity_id) AS total_activities
+    FROM activity_table
+    GROUP BY customer_id;
+
+
+  -- Step 6: Merge Customer Data with Activities
+  EXECUTE QUERY:
+    SELECT c.customer_id, c.name, a.total_activities
+    FROM customer_table c
+    JOIN (
+      SELECT customer_id, COUNT(*) AS total_activities
+      FROM activity_table
+      GROUP BY customer_id
+    ) a
+    ON c.customer_id = a.customer_id;
+
+
+
+--Step 7: to find Client name, client country ,business_line_marketing_group,business group and primary coverage name for all active and prospect clients
+
+Select mc.row_id, mc.name as clientname, mc.loc as client country, 
+(Select mgrp.name from siebel.s_prod_ln op,sirbel.s_org_prodln sp, siebel.cx_mktg_grp mgrp where mc.row_id=sp.org(+) And op.name='global markets') as blmg,
+(Select name from siebel.s_org_ext ext where ext.row_id=mc.par_ou_id and ext.accnt_type_cd='group') As business group, 
+(Select emp.fst_name||' '||emp.last_name from s_contact emp,siebel.s_postn pos where mc.pr_postn_id=row_id and pos.pr_emp_id=emp.row_id) as primary name From siebel.s_org_ext mslc 
+Where mc.accnt_type_cd='mc'
+ And mc.cust_stat_cd in ('active','prospect');
+
+
+--: Load Cleaned Data into Power BI
+  EXPORT QUERY_RESULTS TO .CSV;
+  IMPORT .CSV INTO Power BI;
+
+  --: Create Dashboards in Power BI
+  CREATE VISUALS:
+    - Customer Growth Over Time
+    - Activity Trends by Region
+    - Missing Data Summary
+    - Duplicate Record Heatmap
+
+END
+
+
+
+--Step  8: Pseudocode for Data Validation – Check for Missing Mandatory Fields
+
+Function ValidateMandatoryFields(table, mandatoryFields):
+    For each row in table:
+        For each field in mandatoryFields:
+            If row[field] is NULL or EMPTY:
+                LogError(row['RecordID'], field, "Missing Value")
+    EndFor
+EndFor
+
+
+
+
+
+
+
+--Step 9. Select all records from a customer table
+sql
+CopyEdit
+SELECT * FROM customers;
+
+
+
+-Step 10: Find customers with missing email
+sql
+CopyEdit
+SELECT customer_id, name
+FROM customers
+WHERE email IS NULL;
+
+
+--Step 11:. Count number of customers per country
+sql
+CopyEdit
+SELECT country, COUNT(*) AS total_customers
+FROM customers
+GROUP BY country;
+
+
+
+--Step 12:. Find duplicate phone numbers
+sql
+CopyEdit
+SELECT phone_number, COUNT(*) AS count
+FROM customers
+GROUP BY phone_number
+HAVING COUNT(*) > 1;
+
+
+
+Step 13. List customers registered after a specific date
+sql
+CopyEdit
+SELECT customer_id, name, registration_date
+FROM customers
+WHERE registration_date > TO_DATE('01-JAN-2024', 'DD-MON-YYYY');
+
+
+Step 14: Update null mobile numbers to a default placeholder
+sql
+CopyEdit
+UPDATE customers
+SET phone_number = 'UNKNOWN'
+WHERE phone_number IS NULL;
+
+
+--Step 15: Delete inactive customers
+sql
+CopyEdit
+DELETE FROM customers
+WHERE status = 'INACTIVE';
+
+
+--Step 16:. Find customers without assigned sales reps
+sql
+CopyEdit
+SELECT customer_id, name
+FROM customers
+WHERE sales_rep_id IS NULL;
+
+
+--Step 17:. Join customer and sales_rep table to get sales rep names
+sql
+CopyEdit
+SELECT c.customer_id, c.name, s.rep_name
+FROM customers c, sales_reps s
+WHERE c.sales_rep_id = s.rep_id;
+
+
+--Step 18: Get number of customers per state with more than 50 entries
+sql
+CopyEdit
+SELECT state, COUNT(*) AS customer_count
+FROM customers
+GROUP BY state
+HAVING COUNT(*) > 50;
+
+
+--Step 19: List customers whose names start with 'A'
+sql
+CopyEdit
+SELECT *
+FROM customers
+WHERE name LIKE 'A%';
+
+
+--Step 20:Get customers who haven't logged in during the past year
+sql
+CopyEdit
+SELECT customer_id, name
+FROM customers
+WHERE last_login_date < SYSDATE - 365;
+
+
+
+
+PowerBi
+
+BEGIN
+
+  -- Step 1: Load Data Sources
+  LOAD customer_data.csv;
+  LOAD activity_data.csv;
+
+  -- Step 2: Perform Data Cleaning in Power Query Editor
+  FOR EACH column IN customer_data
+    IF column_type IS text THEN
+      TRIM leading and trailing spaces;
+      REPLACE nulls WITH "Not Available";
+    END IF
+  END FOR
+
+  REMOVE duplicate rows BASED ON email;
+
+  FORMAT created_date TO "dd-mm-yyyy";
+  FILTER OUT records WHERE status IS NULL;
+
+  -- Step 3: Merge Datasets
+  JOIN customer_data WITH activity_data ON customer_id;
+
+  -- Step 4: Create Calculated Columns / Measures
+  CREATE MEASURE: Total_Activities = COUNT(activity_id);
+  CREATE MEASURE: Active_Customers = COUNTROWS(FILTER(customer_data, status = "Active"));
+  CREATE COLUMN: Customer_Age = DATEDIFF(created_date, TODAY());
+
+  -- Step 5: Design Dashboards
+  CREATE Dashboard: Customer Overview
+    - Card: Total Customers
+    - Donut Chart: Customer Status Distribution
+    - Line Chart: New Customers Over Time
+
+  CREATE Dashboard: Activity Insights
+    - Bar Chart: Activities per Region
+    - Heatmap: Activities by Date and Type
+    - Table: Top 10 Most Active Customers
+
+
+
+
+
+
+
+
+
+
+
+
+
+
